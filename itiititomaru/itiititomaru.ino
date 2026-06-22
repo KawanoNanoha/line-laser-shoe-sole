@@ -11,8 +11,8 @@ const int scanEnd = 180;
 const int scanStep = 2;
 
 // 中央位置（実機に合わせて調整）
-const int centerPos1 = 70;   // Tilt中央
-const int centerPos2 = 80;   // Pan中央
+const int centerPos1 = 90;   // Tilt中央
+const int centerPos2 = 90;   // Pan中央
 
 const int settleTime = 50;
 const int photoDelay = 500;
@@ -22,8 +22,8 @@ void setup() {
   Serial.begin(9600);
   
   // attachはsetup()の中、パルス幅を指定
-  servoPan.attach(panPin, 1000, 2500);
-  servoTilt.attach(tiltPin, 1000, 2500);
+  servoPan.attach(panPin, 1000, 2000);
+  servoTilt.attach(tiltPin, 1000, 2000);
 
   // 初期位置
   servoPan.write(centerPos2);
