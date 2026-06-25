@@ -8,8 +8,8 @@ import re
 # パス設定
 # =====================
 
-data_dir   = r"C:\Users\siro1\k22057nk\研究\卒業研究\data"
-result_dir = r"C:\Users\siro1\k22057nk\研究\卒業研究\result"
+data_dir   = r"C:\Users\siro1\k22057nk\研究\line-laser-shoe-sole\data"
+result_dir = r"C:\Users\siro1\k22057nk\研究\line-laser-shoe-sole\result"
 
 os.makedirs(result_dir, exist_ok=True)
 
@@ -56,7 +56,7 @@ for fname in sorted(os.listdir(data_dir)):
     pan_angle  = int(m.group(2))
 
     # Tiltスキャン（Pan=080固定）のみ使う
-    if pan_angle != 80:
+    if pan_angle != 130:
         continue
 
     fpath = os.path.join(data_dir, fname)
@@ -105,7 +105,10 @@ for px, py in groove_points:
 # 保存
 # =====================
 
+from PIL import Image
 out_path = os.path.join(result_dir, "sole_mapping.png")
-cv2.imwrite(out_path, canvas)
+canvas_rgb = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
+Image.fromarray(canvas_rgb).save(out_path)
+# cv2.imwrite(out_path, canvas)
 
 print(f"\n保存完了: {out_path}")

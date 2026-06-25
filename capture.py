@@ -9,7 +9,7 @@ import os
 # 保存フォルダ
 # =====================
 
-base_dir = r"C:\Users\siro1\k22057nk\研究\卒業研究\data"
+base_dir = r"C:\Users\siro1\k22057nk\研究\line-laser-shoe-sole\data"
 
 os.makedirs(base_dir, exist_ok=True)
 
@@ -180,7 +180,7 @@ while True:
 
     # --- フェーズに合った輪郭だけ残す ---
 
-    filtered_mask = filter_contours_by_phase(mask, phase)
+    filtered_mask = mask    # filter_contours_by_phase(mask, phase)
 
     # --- 座標取得 ---
 
