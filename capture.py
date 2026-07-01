@@ -50,36 +50,25 @@ def filter_contours_by_phase(mask, phase):
     選んだ輪郭だけを白く塗ったmaskを返す
     """
 
-    contours, _ = cv2.findContours(
-        mask,
-        cv2.RETR_EXTERNAL,
-        cv2.CHAIN_APPROX_SIMPLE
-    )
-
-    if not contours:
-        return np.zeros_like(mask)
-
-    # 面積でソート（大きい順）、上位5つまで対象
-    contours = sorted(contours, key=cv2.contourArea, reverse=True)[:5]
+    # 各行・列の白ピクセル数を数える
+    row_counts = np.sum(mask > 0, axis=1)  # 横方向の広がり
+    col_counts = np.sum(mask > 0, axis=0)  # 縦方向の広がり
 
     filtered_mask = np.zeros_like(mask)
 
-    for cnt in contours:
+    if phase == "TILT":
+        # 縦線：特定の列に白ピクセルが集中してる列だけ残す
+        threshold_col = np.max(col_counts) * 0.1
+        for x in range(mask.shape[1]):
+            if col_counts[x] > threshold_col:
+                filtered_mask[:, x] = mask[:, x]
 
-        if cv2.contourArea(cnt) < 50:  # 小さすぎるノイズは無視
-            continue
-
-        x, y, w, h = cv2.boundingRect(cnt)
-
-        if phase == "TILT":
-            # 縦線：高さが幅より大きい
-            if h > w:
-                cv2.drawContours(filtered_mask, [cnt], -1, 255, -1)
-
-        elif phase == "PAN":
-            # 横線：幅が高さより大きい
-            if w > h:
-                cv2.drawContours(filtered_mask, [cnt], -1, 255, -1)
+    elif phase == "PAN":
+        # 横線：特定の行に白ピクセルが集中してる行だけ残す
+        threshold_row = np.max(row_counts) * 0.1
+        for y in range(mask.shape[0]):
+            if row_counts[y] > threshold_row:
+                filtered_mask[y, :] = mask[y, :]
 
     return filtered_mask
 
@@ -180,7 +169,7 @@ while True:
 
     # --- フェーズに合った輪郭だけ残す ---
 
-    filtered_mask = mask    # filter_contours_by_phase(mask, phase)
+    filtered_mask = filter_contours_by_phase(mask, phase)
 
     # --- 座標取得 ---
 

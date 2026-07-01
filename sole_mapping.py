@@ -54,6 +54,9 @@ for fname in sorted(os.listdir(data_dir)):
 
     tilt_angle = int(m.group(1))
     pan_angle  = int(m.group(2))
+    # # sole_mapping_fixed.py の tilt_angle フィルターを一時的に追加
+    # if tilt_angle != 50:
+    #     continue
 
     # Tiltスキャン（Pan=080固定）のみ使う
     if pan_angle != 130:
@@ -70,6 +73,17 @@ for fname in sorted(os.listdir(data_dir)):
 
         x = df["x"].values
         y = df["y"].values
+
+        # # 中央値から外れた点を除外
+        # y_median = np.median(y)
+        # y_std = np.std(y)
+        # mask_filter = np.abs(y - y_median) < y_std * 1.5
+        # x = x[mask_filter]
+        # y = y[mask_filter]
+
+        # # x範囲が広すぎる断面はスキップ（横線混入）
+        # if x.max() - x.min() > 250:
+        #     continue
 
         # baseline基準で深さ再計算
         coef     = np.polyfit(x, y, 1)
@@ -94,12 +108,16 @@ print(f"溝判定点:     {len(groove_points)}点")
 # =====================
 
 # 全レーザー点（暗い青）
+# for px, py in all_points:
+#     cv2.circle(canvas, (px, py), 2, (80, 80, 160), -1)
+
+# 全レーザー点を白で描画（溝判定なし）
 for px, py in all_points:
-    cv2.circle(canvas, (px, py), 2, (80, 80, 160), -1)
+    cv2.circle(canvas, (px, py), 2, (255, 255, 255), -1)
 
 # 溝点（緑）
-for px, py in groove_points:
-    cv2.circle(canvas, (px, py), 4, (0, 220, 80), -1)
+# for px, py in groove_points:
+#     cv2.circle(canvas, (px, py), 4, (0, 220, 80), -1)
 
 # =====================
 # 保存
