@@ -1,3 +1,6 @@
-    skip_tilts = [78, 80, 82, 84, 86, 88, 92, 94, 96, 98, 100, 102, 104, 106, 108, 110, 112, 114, 116]
-    if tilt_angle in skip_tilts:
-        continue
+# y行ごとにxの平均を取得
+    # points = []
+    # for y in range(filtered_mask.shape[0]):
+    #     xs = np.where(filtered_mask[y, :] > 0)[0]
+    #     if len(xs) > 0:
+    #         points.append((int(np.mean(xs)), y))
