@@ -26,16 +26,32 @@ ser = serial.Serial("COM3", 9600, timeout=1)
 
 cap = cv2.VideoCapture(0)
 cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
+<<<<<<< HEAD
 cap.set(cv2.CAP_PROP_EXPOSURE, +10)
+=======
+cap.set(cv2.CAP_PROP_EXPOSURE, 0)
+>>>>>>> feature
 
 print(f"解像度: {int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))}x{int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))}")
 print("起動しました。qで終了。")
 
 saved_count = 0
 
+# 最初のフレームを背景として保存
+background_saved = False
+
 while True:
 
     ret, frame = cap.read()
+
+    # 最初の1枚を背景として保存
+    if not background_saved:
+        from PIL import Image
+        img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        Image.fromarray(img_rgb).save(os.path.join(base_dir, "background.png"))
+        background_saved = True
+        print("背景画像保存完了")
+
     if not ret:
         break
 

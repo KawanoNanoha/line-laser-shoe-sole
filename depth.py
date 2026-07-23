@@ -40,15 +40,25 @@ for file in files:
     # 基準線（1次近似）
     #========================
 
+<<<<<<< HEAD
     coef = np.polyfit(x, y, 1)
 
     baseline = np.polyval(coef, x)
+=======
+    coef = np.polyfit(y, x, 1)
+
+    baseline = np.polyval(coef, y)
+>>>>>>> feature
 
     #========================
     # 深さ
     #========================
 
+<<<<<<< HEAD
     depth = baseline - y
+=======
+    depth = baseline - x
+>>>>>>> feature
 
     df["baseline"] = baseline
     df["depth"] = depth
@@ -78,8 +88,13 @@ for file in files:
     plt.plot(x,y,label="Laser")
 
     plt.plot(
+<<<<<<< HEAD
         x,
         baseline,
+=======
+        baseline,
+        y,
+>>>>>>> feature
         "--",
         label="Baseline"
     )
