@@ -14,8 +14,8 @@ const int scanStep = 2;
 const int centerPos1 = 150;   // Tilt中央
 const int centerPos2 = 130;   // Pan中央
 
-const int settleTime = 200;
-const int photoDelay = 1000;
+const int settleTime = 180;
+const int photoDelay = 800;
 
 
 void setup() {

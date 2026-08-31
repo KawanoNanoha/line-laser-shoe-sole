@@ -162,7 +162,7 @@ for px, py in groove_points:
 # 保存
 # =====================
 
-out_path = os.path.join(result_dir, "4sole_map.png")
+out_path = os.path.join(result_dir, "2sole_map.png")
 PILImage.fromarray(cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)).save(out_path)
 
 print(f"\n保存完了: {out_path}")
