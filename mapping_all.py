@@ -34,10 +34,10 @@ for d in [STAGE1_DIR, STAGE2_DIR, STAGE3_DIR, STAGE4_DIR]:
 # 赤色抽出
 H1_LOW = 0
 H1_HIGH = 12
-H2_LOW = 168
+H2_LOW = 130
 H2_HIGH = 180
-S_MIN = 120
-V_MIN = 120
+S_MIN = 12
+V_MIN = 90
 
 # 横線判定
 # -30～30度を横線として除去
@@ -160,7 +160,7 @@ def remove_horizontal_lines(mask):
 # マスクから各行のレーザー位置を取得
 # ============================================================
 
-def get_row_centers(mask, img):
+def get_row_centers(mask, img, ref_x=None):
     """
     各yについて、赤色領域の中心xを取得する。
     同じ行に複数の赤領域がある場合は、赤チャンネルの
@@ -182,22 +182,15 @@ def get_row_centers(mask, img):
         # 近いx同士をクラスタ化
         gaps = np.where(np.diff(xs) > 4)[0]
         clusters = np.split(xs, gaps + 1)
-
-        best_cluster = None
-        best_strength = -1
-
-        for cluster in clusters:
-            if len(cluster) == 0:
-                continue
-
-            strength = float(np.sum(red[y, cluster]))
-
-            if strength > best_strength:
-                best_strength = strength
-                best_cluster = cluster
-
-        if best_cluster is None:
+        clusters = [c for c in clusters if len(c) > 0]
+        if len(clusters) == 0:
             continue
+ 
+        if ref_x is not None and y in ref_x:
+            target = ref_x[y]
+            best_cluster = min(clusters, key=lambda c: abs(np.mean(c) - target))
+        else:
+            best_cluster = max(clusters, key=lambda c: np.sum(red[y, c]))
 
         values = red[y, best_cluster]
 
@@ -221,44 +214,75 @@ def get_row_centers(mask, img):
 
 def make_baseline(centers):
     """
-    検出された縦線に対して2次多項式を当てはめ、
-    大きく外れている点を除外して再度フィッティングする。
+    検出されたレーザー中心から基準線を作成する。
 
-    これにより、溝部分による大きなずれを
-    基準線に取り込みにくくする。
+    横線などによって一部の中心点が大きく外れていても、
+    それらを外れ値として除外して基準線を推定する。
+
+    基準線は直線として推定することで、
+    横線に引っ張られて不自然な曲線になることを防ぐ。
     """
-    if len(centers) < 20:
+
+    if len(centers) < 10:
         return None
 
+    # ------------------------------------------------------------
+    # 中心点を配列化
+    # ------------------------------------------------------------
     ys = np.array(sorted(centers.keys()), dtype=np.float64)
-    xs = np.array([centers[int(y)] for y in ys], dtype=np.float64)
+    xs = np.array(
+        [centers[int(y)] for y in ys],
+        dtype=np.float64
+    )
 
-    degree = min(BASELINE_DEGREE, len(xs) - 1)
+    # ------------------------------------------------------------
+    # ① 最初に直線を推定
+    #    x = a*y + b
+    # ------------------------------------------------------------
+    coeff = np.polyfit(ys, xs, 1)
 
-    # 初回フィット
-    coeff = np.polyfit(ys, xs, degree)
+    # ------------------------------------------------------------
+    # ② 直線からの距離を計算
+    # ------------------------------------------------------------
     predicted = np.polyval(coeff, ys)
-
     residual = np.abs(xs - predicted)
 
-    # 大きなずれを除いて再フィット
-    inlier_limit = DEVIATION_THRESHOLD
-    inliers = residual <= inlier_limit
+    # ------------------------------------------------------------
+    # ③ 大きく外れている点を除外
+    # ------------------------------------------------------------
+    inliers = residual <= DEVIATION_THRESHOLD
 
-    # 点が少なくなりすぎた場合は、上位80%程度を使用
-    if np.sum(inliers) < max(10, len(xs) * 0.3):
-        limit = np.percentile(residual, 80)
-        inliers = residual <= limit
+    # ------------------------------------------------------------
+    # ④ 外れ値を除いた点で再度直線を計算
+    # ------------------------------------------------------------
+    if np.sum(inliers) >= 10:
 
-    if np.sum(inliers) >= degree + 1:
-        coeff = np.polyfit(ys[inliers], xs[inliers], degree)
+        coeff = np.polyfit(
+            ys[inliers],
+            xs[inliers],
+            1
+        )
+
+    # ------------------------------------------------------------
+    # ⑤ さらに一度だけ外れ値を確認
+    # ------------------------------------------------------------
+    predicted = np.polyval(coeff, ys)
+    residual = np.abs(xs - predicted)
+
+    inliers = residual <= DEVIATION_THRESHOLD
+
+    if np.sum(inliers) >= 10:
+
+        coeff = np.polyfit(
+            ys[inliers],
+            xs[inliers],
+            1
+        )
 
     return coeff
 
-
 def baseline_x(coeff, y):
     return float(np.polyval(coeff, y))
-
 
 # ============================================================
 # 3. 溝候補検出
@@ -284,8 +308,13 @@ def detect_grooves(img, mask, centers, strengths, coeff):
 
     groove_points = []
 
-    for y in range(h):
+    # 靴底が実際に写っている行の範囲だけを対象にする。
+    if len(centers) == 0:
+        return groove_points
+    y_min = min(centers.keys())
+    y_max = max(centers.keys())
 
+    for y in range(y_min, y_max + 1):
         bx = baseline_x(coeff, y)
 
         # 画像外なら無視
@@ -418,6 +447,7 @@ for index, (tilt, pan, fname) in enumerate(files, start=1):
     # --------------------------------------------------------
     # 赤色マスク
     # --------------------------------------------------------
+    img = cv2.convertScaleAbs(img, alpha=2.0, beta=30)
     red_mask = make_red_mask(img)
 
     # --------------------------------------------------------
@@ -435,7 +465,7 @@ for index, (tilt, pan, fname) in enumerate(files, start=1):
         stage1
     )
 
-    print(f"1. 横線排除: Hough線 {removed_count}本を除去")
+    print(f"1. 横線排除: Hough線 {removed_count}本を除去, mask px={int((vertical_mask>0).sum())}")
 
     # --------------------------------------------------------
     # 各行の縦レーザー位置
@@ -461,9 +491,10 @@ for index, (tilt, pan, fname) in enumerate(files, start=1):
         continue
 
     stage2 = stage1.copy()
+    y_min, y_max = min(centers.keys()), max(centers.keys())
 
     # 基準線を青色で描画
-    for y in range(h):
+    for y in range(y_min, y_max + 1):
         x = int(round(baseline_x(coeff, y)))
 
         if 0 <= x < w:
