@@ -26,11 +26,7 @@ ser = serial.Serial("COM3", 9600, timeout=1)
 
 cap = cv2.VideoCapture(0)
 cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
-<<<<<<< HEAD
 cap.set(cv2.CAP_PROP_EXPOSURE, +10)
-=======
-cap.set(cv2.CAP_PROP_EXPOSURE, 0)
->>>>>>> feature
 
 print(f"解像度: {int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))}x{int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))}")
 print("起動しました。qで終了。")
