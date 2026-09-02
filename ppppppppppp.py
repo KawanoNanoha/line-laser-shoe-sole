@@ -34,10 +34,10 @@ for d in [STAGE1_DIR, STAGE2_DIR, STAGE3_DIR, STAGE4_DIR]:
 # 赤色抽出
 H1_LOW = 0
 H1_HIGH = 12
-H2_LOW = 130
+H2_LOW = 168
 H2_HIGH = 180
-S_MIN = 12
-V_MIN = 90
+S_MIN = 30
+V_MIN = 180
 
 # 横線判定
 # -30～30度を横線として除去
@@ -120,19 +120,10 @@ def make_red_mask(img):
 
 def remove_horizontal_lines(mask):
     """
-    横方向の不要な線を除去する。
-
-    ① HoughLinesPによる角度判定
-    ② 横長形状の除去
-    ③ 縦方向の形態学処理
-
-    の3段階で横線・点状ノイズを除去する。
+    HoughLinesPで横方向の線を検出し、マスクから除去する。
+    縦線は残す。
     """
     result = mask.copy()
-
-    # ========================================================
-    # ① HoughLinesPによる横線除去
-    # ========================================================
 
     lines = cv2.HoughLinesP(
         mask,
@@ -149,29 +140,10 @@ def remove_horizontal_lines(mask):
         for line in lines:
             x1, y1, x2, y2 = line[0]
 
-            angle = np.degrees(
-                np.arctan2(y2 - y1, x2 - x1)
-            )
+            angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
 
-            # ------------------------------------------------
-            # 水平方向の角度を正規化
-            #
-            # 例：
-            #   0°   → 水平
-            #   180° → 水平
-            #   90°  → 垂直
-            # ------------------------------------------------
-
-            abs_angle = abs(angle)
-
-            if abs_angle > 90:
-                horizontal_angle = 180 - abs_angle
-            else:
-                horizontal_angle = abs_angle
-
-            # 30度以内を横線として除去
-            if horizontal_angle <= 30:
-
+            # -30～30度を横線とみなす
+            if HORIZONTAL_ANGLE_MIN <= angle <= HORIZONTAL_ANGLE_MAX:
                 cv2.line(
                     result,
                     (x1, y1),
@@ -179,108 +151,9 @@ def remove_horizontal_lines(mask):
                     0,
                     LINE_REMOVE_THICKNESS
                 )
-
                 removed += 1
 
-    # ========================================================
-    # ② 横長の独立した成分を除去
-    # ========================================================
-
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(
-        result,
-        connectivity=8
-    )
-
-    filtered = np.zeros_like(result)
-
-    for i in range(1, num_labels):
-
-        x = stats[i, cv2.CC_STAT_LEFT]
-        y = stats[i, cv2.CC_STAT_TOP]
-        width = stats[i, cv2.CC_STAT_WIDTH]
-        height = stats[i, cv2.CC_STAT_HEIGHT]
-        area = stats[i, cv2.CC_STAT_AREA]
-
-        # 小さすぎるノイズは除去
-        if area < 5:
-            continue
-
-        # 横長の成分を除去
-        if width >= height * 2.5:
-            continue
-
-        # 縦方向にある程度の長さがあるものを残す
-        # ※短い点はここで除去
-        if height < 4 and width < 4:
-            continue
-
-        # 残す
-        filtered[labels == i] = 255
-
-    # ========================================================
-    # ③ T148のような「太い点」を抑制
-    #
-    # 各行について、レーザーの中心付近だけを残す。
-    # 横方向に大きく広がった部分を削る。
-    # ========================================================
-
-    cleaned = np.zeros_like(filtered)
-
-    h, w = filtered.shape
-
-    # 1行ずつ処理
-    for y in range(h):
-
-        xs = np.where(filtered[y] > 0)[0]
-
-        if len(xs) == 0:
-            continue
-
-        # 赤領域の幅
-        x_min = xs.min()
-        x_max = xs.max()
-        width = x_max - x_min + 1
-
-        # 通常の細いレーザー
-        if width <= 6:
-
-            cleaned[y, xs] = 255
-
-        else:
-
-            # =================================================
-            # 太くなった部分
-            #
-            # 完全に消すのではなく、
-            # 中央の細い部分だけ残す
-            # =================================================
-
-            center = int(round((x_min + x_max) / 2))
-
-            keep_width = 3
-
-            left = max(0, center - keep_width // 2)
-            right = min(w, center + keep_width // 2 + 1)
-
-            cleaned[y, left:right] = 255
-
-    # ========================================================
-    # ④ 縦方向の小さな途切れを補間
-    # 強いOPEN処理は使わない。
-    # ========================================================
-
-    vertical_kernel = cv2.getStructuringElement(
-        cv2.MORPH_RECT,
-        (1, 3)
-    )
-
-    cleaned = cv2.morphologyEx(
-        cleaned,
-        cv2.MORPH_CLOSE,
-        vertical_kernel
-    )
-
-    return cleaned, removed
+    return result, removed
 
 
 # ============================================================
@@ -341,75 +214,44 @@ def get_row_centers(mask, img, ref_x=None):
 
 def make_baseline(centers):
     """
-    検出されたレーザー中心から基準線を作成する。
+    検出された縦線に対して2次多項式を当てはめ、
+    大きく外れている点を除外して再度フィッティングする。
 
-    横線などによって一部の中心点が大きく外れていても、
-    それらを外れ値として除外して基準線を推定する。
-
-    基準線は直線として推定することで、
-    横線に引っ張られて不自然な曲線になることを防ぐ。
+    これにより、溝部分による大きなずれを
+    基準線に取り込みにくくする。
     """
-
-    if len(centers) < 10:
+    if len(centers) < 20:
         return None
 
-    # ------------------------------------------------------------
-    # 中心点を配列化
-    # ------------------------------------------------------------
     ys = np.array(sorted(centers.keys()), dtype=np.float64)
-    xs = np.array(
-        [centers[int(y)] for y in ys],
-        dtype=np.float64
-    )
+    xs = np.array([centers[int(y)] for y in ys], dtype=np.float64)
 
-    # ------------------------------------------------------------
-    # ① 最初に直線を推定
-    #    x = a*y + b
-    # ------------------------------------------------------------
-    coeff = np.polyfit(ys, xs, 1)
+    degree = min(BASELINE_DEGREE, len(xs) - 1)
 
-    # ------------------------------------------------------------
-    # ② 直線からの距離を計算
-    # ------------------------------------------------------------
+    # 初回フィット
+    coeff = np.polyfit(ys, xs, degree)
     predicted = np.polyval(coeff, ys)
+
     residual = np.abs(xs - predicted)
 
-    # ------------------------------------------------------------
-    # ③ 大きく外れている点を除外
-    # ------------------------------------------------------------
-    inliers = residual <= DEVIATION_THRESHOLD
+    # 大きなずれを除いて再フィット
+    inlier_limit = DEVIATION_THRESHOLD
+    inliers = residual <= inlier_limit
 
-    # ------------------------------------------------------------
-    # ④ 外れ値を除いた点で再度直線を計算
-    # ------------------------------------------------------------
-    if np.sum(inliers) >= 10:
+    # 点が少なくなりすぎた場合は、上位80%程度を使用
+    if np.sum(inliers) < max(10, len(xs) * 0.3):
+        limit = np.percentile(residual, 80)
+        inliers = residual <= limit
 
-        coeff = np.polyfit(
-            ys[inliers],
-            xs[inliers],
-            1
-        )
-
-    # ------------------------------------------------------------
-    # ⑤ さらに一度だけ外れ値を確認
-    # ------------------------------------------------------------
-    predicted = np.polyval(coeff, ys)
-    residual = np.abs(xs - predicted)
-
-    inliers = residual <= DEVIATION_THRESHOLD
-
-    if np.sum(inliers) >= 10:
-
-        coeff = np.polyfit(
-            ys[inliers],
-            xs[inliers],
-            1
-        )
+    if np.sum(inliers) >= degree + 1:
+        coeff = np.polyfit(ys[inliers], xs[inliers], degree)
 
     return coeff
 
+
 def baseline_x(coeff, y):
     return float(np.polyval(coeff, y))
+
 
 # ============================================================
 # 3. 溝候補検出
@@ -574,6 +416,7 @@ for index, (tilt, pan, fname) in enumerate(files, start=1):
     # --------------------------------------------------------
     # 赤色マスク
     # --------------------------------------------------------
+    img = cv2.convertScaleAbs(img, alpha=2.0, beta=30)
     red_mask = make_red_mask(img)
 
     # --------------------------------------------------------
